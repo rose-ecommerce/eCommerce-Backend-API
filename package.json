@@ -5,8 +5,8 @@
   "scripts": {
     "super-clean": "rm -rf node_modules && npm cache verify",
     "build": "npx tsc",
-    "start": "MODE=production node dist/src/main.js",
-    "dev": "nodemon ./src/main.ts"
+    "start": "MODE=production node dist/src/app.js",
+    "dev": "nodemon ./src/app.ts"
   },
   "author": "",
   "license": "ISC",

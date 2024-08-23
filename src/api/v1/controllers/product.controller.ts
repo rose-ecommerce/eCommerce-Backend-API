@@ -18,9 +18,9 @@ import {
   convertStringIdsToObjectId,
   isValidArrayOfStrings,
   createProductImage,
-  deleteProductImageFile,
+  deleteProductImageFileFromLocal,
   doesArraysHaveSimilarElements,
-  uploadProductImageFile,
+  uploadProductImageFileInLocal,
   EditProductBasicDetailsDto,
   merge,
   ProductDocument,
@@ -32,7 +32,9 @@ import {
   retrieveSortInfo,
   SortDirection,
   DEFAULT_SORT_COLUMN,
-  DEFAULT_SORT_DIRECTION
+  DEFAULT_SORT_DIRECTION,
+  uploadProductImageFileInS3,
+  deleteProductImageFileFromS3
 } from '../shared';
 import {
   ProductImageModel,
@@ -40,6 +42,72 @@ import {
 } from '../data-models';
 
 export const createProduct = async (req: GetUserAuthInfoRequestInterface, res: Response, next: NextFunction) => {
+  const session: ClientSession = await mongoose.startSession();
+  try {
+    await session.withTransaction(async () => {
+      const productImgFiles = <Array<Express.Multer.File>>req?.files;
+      const productData = new CreateProductDto(req.body);
+
+      const product: ProductDocument = new ProductModel({
+        name: productData.name,
+        description: productData.description,
+        quantityInStock: productData.quantityInStock,
+        category: productData.category,
+        isPinned: productData.isPinned,
+        maxRetailPrice: productData.maxRetailPrice,
+        sellingPrice: productData.sellingPrice,
+        customizationTextRange: productData.customizationTextRange
+      });
+
+      if (!Array.isArray(productImgFiles) ||
+          productImgFiles.length < MIN_IMAGES_PER_PRODUCT) {
+        throw new Error(`Minimum 1 image per product req`);
+      }
+
+      if (productImgFiles.length > MAX_IMAGES_PER_PRODUCT) {
+        throw new Error(`Maximum 3 images per product.`);
+      }
+
+      const createProductImages: Array<Promise<any>> = productImgFiles.map(async (file) => {
+        const productImgId = await createProductImage(
+          file,
+          product._id,
+          false,
+          session
+        );
+        (product.images as unknown as Array<ProductImageDocument>)?.push(productImgId);
+      })
+
+      const assignSimilarProducts: Array<Promise<any>> = productData.similarProducts.map(async (productId) => {
+        const similarProduct = await ProductModel.findById(productId);
+        if (!similarProduct) {
+          throw new Error(`Product with id ${productId} from similar product array not found`);
+        }
+        product.similarProducts.push(productId);
+        similarProduct.similarProducts.push(product._id);
+        await similarProduct.save({ session });
+      });
+
+      await Promise.all(<Array<Promise<any>>>[
+        ...createProductImages,
+        ...assignSimilarProducts
+      ]);
+
+      await product.save({ session });
+
+      // * STORING LOCALLY
+      await Promise.all(productImgFiles.map(uploadProductImageFileInLocal));
+
+      return next(new CustomSuccess(product, 200));
+    });
+  } catch (error: any) {
+    return next(new CustomError(error.message, 400));
+  } finally {
+    await session.endSession();
+  }
+};
+
+export const createProductS3 = async (req: GetUserAuthInfoRequestInterface, res: Response, next: NextFunction) => {
   const session: ClientSession = await mongoose.startSession();
   try {
     await session.withTransaction(async () => {
@@ -67,7 +135,12 @@ export const createProduct = async (req: GetUserAuthInfoRequestInterface, res: R
       }
 
       const createProductImages: Array<Promise<any>> = productImgFiles.map(async (file) => {
-        const productImgId = await createProductImage(file, product._id, session);
+        const productImgId = await createProductImage(
+          file,
+          product._id,
+          true,
+          session
+        );
         (product.images as unknown as Array<ProductImageDocument>)?.push(productImgId);
       })
 
@@ -88,7 +161,8 @@ export const createProduct = async (req: GetUserAuthInfoRequestInterface, res: R
 
       await product.save({ session });
 
-      await Promise.all(productImgFiles.map(uploadProductImageFile));
+      // * STORING IN S3
+      await Promise.all(productImgFiles.map(uploadProductImageFileInS3));
 
       return next(new CustomSuccess(product, 200));
     });
@@ -219,7 +293,7 @@ export const getProductsWithIds = async (req: GetUserAuthInfoRequestInterface, r
   }
 };
 
-export const addNewImageOfProduct = async (req: GetUserAuthInfoRequestInterface, res: Response, next: NextFunction) => {
+export const addNewImageOfProductInLocal = async (req: GetUserAuthInfoRequestInterface, res: Response, next: NextFunction) => {
   const session: ClientSession = await mongoose.startSession();
   try {
     await session.withTransaction(async () => {
@@ -244,12 +318,13 @@ export const addNewImageOfProduct = async (req: GetUserAuthInfoRequestInterface,
       }
 
 
-      const productImg = await createProductImage(productImgFile, product._id, session);
+      const productImg = await createProductImage(productImgFile, product._id, false, session);
       (product.images as unknown as Array<ProductImageDocument>)?.push(productImg);
 
       await product.save({ session });
 
-      await uploadProductImageFile(productImgFile);
+      // * STORING LOCALLY
+      await uploadProductImageFileInLocal(productImgFile);
 
       return next(new CustomSuccess(product, 200));
 
@@ -261,7 +336,50 @@ export const addNewImageOfProduct = async (req: GetUserAuthInfoRequestInterface,
   }
 };
 
-export const deleteImageOfProduct = async (req: GetUserAuthInfoRequestInterface, res: Response, next: NextFunction) => {
+export const addNewImageOfProductInS3 = async (req: GetUserAuthInfoRequestInterface, res: Response, next: NextFunction) => {
+  const session: ClientSession = await mongoose.startSession();
+  try {
+    await session.withTransaction(async () => {
+      const productImgFile = <Express.Multer.File>req?.file;
+      const { productId } = req.params;
+
+      const product = await ProductModel
+        .findById(productId)
+        .populate('images');
+
+
+      if (!productImgFile) {
+        throw new Error(`Image not uploaded.`);
+      }
+
+      if (!product) {
+        throw new Error(`Product with id ${productId} not found`);
+      }
+
+      if (!(<number>product.images?.length < MAX_IMAGES_PER_PRODUCT)) {
+        throw new Error(`Already ${MAX_IMAGES_PER_PRODUCT} images for product present. Delete some image.`);
+      }
+
+
+      const productImg = await createProductImage(productImgFile, product._id, true, session);
+      (product.images as unknown as Array<ProductImageDocument>)?.push(productImg);
+
+      await product.save({ session });
+
+      // * STORING IN S3
+      await uploadProductImageFileInS3(productImgFile);
+
+      return next(new CustomSuccess(product, 200));
+
+    });
+  } catch (error: any) {
+    return next(new CustomError(error.message, 400));
+  } finally {
+    await session.endSession();
+  }
+};
+
+export const deleteImageOfProductFromLocal = async (req: GetUserAuthInfoRequestInterface, res: Response, next: NextFunction) => {
   const session: ClientSession = await mongoose.startSession();
   try {
     await session.withTransaction(async () => {
@@ -304,7 +422,63 @@ export const deleteImageOfProduct = async (req: GetUserAuthInfoRequestInterface,
         product.save({ session })
       ]);
 
-      await deleteProductImageFile(imagePath);
+      // * DELETING FROM LOCAL
+      await deleteProductImageFileFromLocal(imagePath);
+
+      return next(new CustomSuccess(product, 200));
+    });
+  } catch (error: any) {
+    return next(new CustomError(error.message, 400));
+  } finally {
+    await session.endSession();
+  }
+};
+
+export const deleteImageOfProductFromS3 = async (req: GetUserAuthInfoRequestInterface, res: Response, next: NextFunction) => {
+  const session: ClientSession = await mongoose.startSession();
+  try {
+    await session.withTransaction(async () => {
+      const { productId, imageId } = req.params;
+
+      const [ product, image ] = await Promise.all([
+        ProductModel
+          .findById(productId)
+          .populate('images'),
+        ProductImageModel
+          .findById(imageId)
+      ]);
+
+      const imagePath = <string>image?.url;
+
+      if (!product) {
+        throw new Error(`Product with id ${productId} not found`);
+      }
+
+      if (!image) {
+        throw new Error(`Image with id ${imageId} not found`);
+      }
+
+      const indexOfImage = product.images.findIndex(item => {
+        return item._id.equals(image._id);
+      });
+
+      if (indexOfImage < 0) {
+        throw new Error(`Image with id ${imageId} does not belong to product with id ${productId}`);
+      }
+
+      if (product.images.length === MIN_IMAGES_PER_PRODUCT) {
+        throw new Error(`Minimum image limit reached`);
+      }
+
+      product.images?.splice(indexOfImage, 1);
+
+      await Promise.all(<Array<Promise<any>>>[
+        image.deleteOne({ session }),
+        product.save({ session })
+      ]);
+
+      // * DELETING FROM S3
+      await deleteProductImageFileFromS3(imagePath);
 
       return next(new CustomSuccess(product, 200));
     });
@@ -449,6 +623,106 @@ export const editSimilarProductsOfProduct = async (req: GetUserAuthInfoRequestIn
       );
 
       await product.save({ session });
+      return next(new CustomSuccess(product, 200));
+    });
+  } catch (error: any) {
+    return next(new CustomError(error.message, 500));
+  } finally {
+    await session.endSession();
+  }
+};
+
+export const deleteProduct = async (req: GetUserAuthInfoRequestInterface, res: Response, next: NextFunction) => {
+  const session: ClientSession = await mongoose.startSession();
+  try {
+    await session.withTransaction(async () => {
+      let { productId }: any = req.params;
+      productId = new Types.ObjectId(productId);
+
+      const product = await ProductModel
+        .findById(productId);
+
+      if (!product) {
+        throw new Error(`Product with id ${productId} not found.`);
+      }
+
+      const removeProductFromSimilarProduct: Array<Promise<void>> = product.similarProducts.map(async (similarProductId) =>  {
+        const similarProduct = await ProductModel.findById(similarProductId);
+        if (similarProduct) {
+          similarProduct.similarProducts = similarProduct.similarProducts.filter(prodId => {
+            prodId = new Types.ObjectId(prodId);
+            return !prodId.equals(productId);
+          });
+          await similarProduct?.save({ session });
+        }
+      });
+
+      const removeImages: Array<Promise<void>> = product.images.map(async (imageId) => {
+        const image = await ProductImageModel.findById(imageId);
+        if (image) {
+          // * DELETING FROM LOCAL
+          await deleteProductImageFileFromLocal(image.url);
+          await image.deleteOne({ session });
+        }
+      });
+
+      await Promise.all([
+        ...removeProductFromSimilarProduct,
+        ...removeImages
+      ]);
+
+      await product.deleteOne({ session });
+
+      return next(new CustomSuccess(product, 200));
+    });
+  } catch (error: any) {
+    return next(new CustomError(error.message, 500));
+  } finally {
+    await session.endSession();
+  }
+};
+
+export const deleteProductS3 = async (req: GetUserAuthInfoRequestInterface, res: Response, next: NextFunction) => {
+  const session: ClientSession = await mongoose.startSession();
+  try {
+    await session.withTransaction(async () => {
+      let { productId }: any = req.params;
+      productId = new Types.ObjectId(productId);
+
+      const product = await ProductModel
+        .findById(productId);
+
+      if (!product) {
+        throw new Error(`Product with id ${productId} not found.`);
+      }
+
+      const removeProductFromSimilarProduct: Array<Promise<void>> = product.similarProducts.map(async (similarProductId) =>  {
+        const similarProduct = await ProductModel.findById(similarProductId);
+        if (similarProduct) {
+          similarProduct.similarProducts = similarProduct.similarProducts.filter(prodId => {
+            prodId = new Types.ObjectId(prodId);
+            return !prodId.equals(productId);
+          });
+          await similarProduct?.save({ session });
+        }
+      });
+
+      const removeImages: Array<Promise<void>> = product.images.map(async (imageId) => {
+        const image = await ProductImageModel.findById(imageId);
+        if (image) {
+          // * DELETEING FROM S3
+          await deleteProductImageFileFromS3(image.url);
+          await image.deleteOne();
+        }
+      });
+
+      await Promise.all([
+        ...removeProductFromSimilarProduct,
+        ...removeImages
+      ]);
+
+      await product.deleteOne();
+
       return next(new CustomSuccess(product, 200));
     });
   } catch (error: any) {

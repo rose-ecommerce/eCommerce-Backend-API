@@ -18,10 +18,15 @@ import {
 } from '../../data-models';
 import {
   ACCEPTED_IMG_EXTENSIONS,
+  AWS_PRODUCT_IMG_FOLDER_NAME,
   PRODUCT_IMG_UPLOAD_PATH,
   ProductImageDocument,
+  ProductImageStorageLocation,
   TARGETED_IMG_SIZE 
 } from '..';
+import {
+  s3
+} from '../../../../config';
 
 /**
  * Create image in the database.
@@ -31,6 +36,7 @@ import {
  */
 export const createProductImage = async (imgFile: Express.Multer.File,
                                          productId: Types.ObjectId,
+                                         s3: boolean,
                                          session: ClientSession): Promise<ProductImageDocument> => {
   if (!imgFile) {
     throw new Error('File is not attached.')
@@ -51,16 +57,28 @@ export const createProductImage = async (imgFile: Express.Multer.File,
   // ! EDITING ARGUMENT DIRECTLY (CALL BY REFERENCE)
   imgFile.originalname = `product_${productId}_img_${productImg._id}.${imgExtension}`;
 
-  productImg.url = `/uploads/${imgFile.originalname}`;
+  if (!s3) {
+    // * STORING LOCALLY
+    productImg.storageLocation = ProductImageStorageLocation.LOCAL;
+    productImg.url = `/uploads/${imgFile.originalname}`;
+  } else {
+    // * STORING IN S3
+    const { AWS_S3_BUCKET_NAME } = <Record<string, string>>process.env;
+    productImg.storageLocation = ProductImageStorageLocation.AWS;
+    productImg.url = `https://${AWS_S3_BUCKET_NAME}.s3.amazonaws.com/${AWS_PRODUCT_IMG_FOLDER_NAME}/${imgFile.originalname}`;
+  }
+
+
+
   await productImg.save({ session });
   return productImg;
 }
 
 /**
- * Save image into the folder.
+ * Save image into the local folder.
  * @param imgFile 
  */
-export const uploadProductImageFile = async (imgFile: Express.Multer.File): Promise<void> => {
+export const uploadProductImageFileInLocal = async (imgFile: Express.Multer.File): Promise<void> => {
   const UPLOAD_DIRECTORY_PATH = path.join(PRODUCT_IMG_UPLOAD_PATH, 'uploads');
   const imgPath = path.join(UPLOAD_DIRECTORY_PATH,  imgFile.originalname);
 
@@ -78,13 +96,55 @@ export const uploadProductImageFile = async (imgFile: Express.Multer.File): Prom
 };
 
 /**
+ * Save image to s3 bucket.
+ * @param imgFile 
+ */
+export const uploadProductImageFileInS3 = async (imgFile: Express.Multer.File): Promise<void> => {
+
+  if (imgFile.size > TARGETED_IMG_SIZE) {
+
+    // ! EDITING ARGUMENT DIRECTLY (CALL BY REFERENCE)
+    imgFile = await compressImage(imgFile, TARGETED_IMG_SIZE);
+  }
+
+  const { AWS_S3_BUCKET_NAME } = <Record<string, string>>process.env;
+  const objectKey: string = `${AWS_PRODUCT_IMG_FOLDER_NAME}/${imgFile.originalname}`;
+
+  await s3.upload({
+    Bucket: AWS_S3_BUCKET_NAME,
+    Key: objectKey,
+    Body: imgFile.buffer,
+    ContentType: imgFile.mimetype,
+    ACL: 'public-read',
+  }).promise();
+};
+
+/**
  * 
  * @param imageFilePath 
  */
-export const deleteProductImageFile = async (relativeImgPath: string): Promise<void> => {
+export const deleteProductImageFileFromLocal = async (relativeImgPath: string): Promise<void> => {
   try {
     const absoluteImgPath = path.join(PRODUCT_IMG_UPLOAD_PATH,  relativeImgPath);
     await unlink(absoluteImgPath);
+  } catch (error) {
+    throw new Error(`Error deleting image.`);
+  }
+}
+
+/**
+ * 
+ * @param imageFilePath 
+ */
+export const deleteProductImageFileFromS3 = async (imgUrl: string): Promise<void> => {
+  const { AWS_S3_BUCKET_NAME } = <Record<string, string>>process.env;
+  const objectKey = imgUrl.replace(`https://${AWS_S3_BUCKET_NAME}.s3.amazonaws.com/`, '');
+
+  try {
+    await s3.deleteObject({
+      Bucket: AWS_S3_BUCKET_NAME,
+      Key: objectKey
+    }).promise();
   } catch (error) {
     throw new Error(`Error deleting image.`);
   }

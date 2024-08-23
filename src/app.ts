@@ -8,6 +8,7 @@ import morgan from 'morgan';
 import cors from 'cors';
 
 import {
+  connectToAWS,
   connectToDatabase
 } from './config';
 import {
@@ -54,6 +55,7 @@ app.use(outcomeHandler);
 connectToDatabase()
   .then(() => {
     server = app.listen(PORT, () => {
+      connectToAWS();
       console.log(`Server is running in ${MODE} mode on port ${PORT}`.yellow.bold);
       setInterval(async () => {
         await deletePendingOrdersPastDelay();

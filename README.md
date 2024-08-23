@@ -13,6 +13,10 @@ MODE=development
 PORT=<Desired port number>
 RAZORPAY_ID=<Razorpay id>
 RAZORPAY_SECRET=<Razorpay secret>
+AWS_S3_BUCKET_NAME=<Your s3 bucket name>
+AWS_ACCESS_KEY_ID=<Your AWS access key id>
+AWS_SECRET_ACCESS_KEY=<Your AWS secret key>
+AWS_REGION=<Your AWS region>
 ```
 
 

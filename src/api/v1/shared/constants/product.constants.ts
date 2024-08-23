@@ -40,6 +40,8 @@ export const MIN_PRODUCT_PRICE = 1;
 
 export const PRODUCT_IMG_UPLOAD_PATH = './dist/public';
 
+export const AWS_PRODUCT_IMG_FOLDER_NAME = 'product-images';
+
 export const PRODUCT_SORTABLE_COLUMNS: readonly (keyof ProductInterface)[] = [
   ...BASE_SORTABLE_COLUMNS,
   'sellingPrice',

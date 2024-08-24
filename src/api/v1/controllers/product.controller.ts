@@ -114,7 +114,7 @@ export const createProductS3 = async (req: GetUserAuthInfoRequestInterface, res:
       const productImgFiles = <Array<Express.Multer.File>>req?.files;
       const productData = new CreateProductDto(req.body);
 
-      const product = new ProductModel({
+      const product: ProductDocument = new ProductModel({
         name: productData.name,
         description: productData.description,
         quantityInStock: productData.quantityInStock,

@@ -18,9 +18,9 @@ export const PRODUCT_DESCRIPTION_LENGTH_RANGE = {
 } as const;
 
 /**
- * Targeted image size in bytes which is 102400 bytes or 100 kilobytes
+ * Targeted image size in bytes which is 102400 bytes or 300 kilobytes
  */
-export const TARGETED_IMG_SIZE = 100 * 1024;
+export const TARGETED_IMG_SIZE = 300 * 1024;
 
 export const MAX_IMAGES_PER_PRODUCT = 3;
 

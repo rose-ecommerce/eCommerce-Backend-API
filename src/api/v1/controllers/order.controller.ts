@@ -17,6 +17,7 @@ import {
   DEFAULT_SORT_COLUMN,
   DEFAULT_SORT_DIRECTION,
   EditOrderBasicDetailsDto,
+  EnvironmentInterface,
   GetUserAuthInfoRequestInterface,
   INR_SUBUNIT,
   NO_SHIPPING_CHARGE_THRESHOLD,
@@ -327,12 +328,23 @@ export const editBasicDetailsOfOrder = async (req: GetUserAuthInfoRequestInterfa
 
 export const verifyOrderPayment = async (req: GetUserAuthInfoRequestInterface, res: Response, next: NextFunction) => {
   try {
-    const { FRONTEND_URL, RAZORPAY_SECRET } = <Record<string, string>>process.env;
+    const {
+      MODE,
+      FRONTEND_URL,
+      RAZORPAY_SECRET_TEST,
+      RAZORPAY_SECRET_LIVE
+    } = process.env as unknown as EnvironmentInterface;
     const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
 
     const body = razorpay_order_id + "|" + razorpay_payment_id;
 
-    const expectedSignature = generateHmacSha256(body, RAZORPAY_SECRET);
+    let expectedSignature: string;
+
+    if (MODE === 'production') {
+      expectedSignature = generateHmacSha256(body, RAZORPAY_SECRET_LIVE);
+    } else {
+      expectedSignature = generateHmacSha256(body, RAZORPAY_SECRET_TEST);
+    }
 
     const isAuthentic = expectedSignature === razorpay_signature;
 

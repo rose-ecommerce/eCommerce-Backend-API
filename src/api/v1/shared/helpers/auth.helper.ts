@@ -3,6 +3,7 @@ import * as jwt from 'jsonwebtoken';
 
 import {
   AccessTokenPayloadInterface,
+  EnvironmentInterface,
   JWT_EXPIRATION_TIME
 } from '..';
 
@@ -12,7 +13,7 @@ import {
  * @returns 
  */
 export const getAccessToken = (payload: AccessTokenPayloadInterface) => {
-  const { ACCESS_TOKEN_SECRET } = <Record<string, string>>process.env;
+  const { ACCESS_TOKEN_SECRET } = process.env as unknown as EnvironmentInterface;
   const accessToken: string = jwt.sign(
     payload,
     ACCESS_TOKEN_SECRET,

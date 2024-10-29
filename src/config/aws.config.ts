@@ -1,11 +1,15 @@
 import AWS from 'aws-sdk';
 
+import {
+  EnvironmentInterface
+} from '../api/v1/shared';
+
 export const connectToAWS = (): void => {
   const {
     AWS_ACCESS_KEY_ID,
     AWS_SECRET_ACCESS_KEY,
     AWS_REGION
-  } = <Record<string, string>>process.env;
+  } = process.env as unknown as EnvironmentInterface;
 
   AWS.config.update({
     accessKeyId: AWS_ACCESS_KEY_ID,

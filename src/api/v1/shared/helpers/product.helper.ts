@@ -19,6 +19,7 @@ import {
 import {
   ACCEPTED_IMG_EXTENSIONS,
   AWS_PRODUCT_IMG_FOLDER_NAME,
+  EnvironmentInterface,
   PRODUCT_IMG_UPLOAD_PATH,
   ProductImageDocument,
   ProductImageStorageLocation,
@@ -63,7 +64,7 @@ export const createProductImage = async (imgFile: Express.Multer.File,
     productImg.url = `/uploads/${imgFile.originalname}`;
   } else {
     // * STORING IN S3
-    const { AWS_S3_BUCKET_NAME } = <Record<string, string>>process.env;
+    const { AWS_S3_BUCKET_NAME } = process.env as unknown as EnvironmentInterface;
     productImg.storageLocation = ProductImageStorageLocation.AWS;
     productImg.url = `https://${AWS_S3_BUCKET_NAME}.s3.amazonaws.com/${AWS_PRODUCT_IMG_FOLDER_NAME}/${imgFile.originalname}`;
   }
@@ -107,7 +108,7 @@ export const uploadProductImageFileInS3 = async (imgFile: Express.Multer.File): 
     imgFile = await compressImage(imgFile, TARGETED_IMG_SIZE);
   }
 
-  const { AWS_S3_BUCKET_NAME } = <Record<string, string>>process.env;
+  const { AWS_S3_BUCKET_NAME } = process.env as unknown as EnvironmentInterface;
   const objectKey: string = `${AWS_PRODUCT_IMG_FOLDER_NAME}/${imgFile.originalname}`;
 
   await s3.upload({
@@ -137,7 +138,7 @@ export const deleteProductImageFileFromLocal = async (relativeImgPath: string): 
  * @param imageFilePath 
  */
 export const deleteProductImageFileFromS3 = async (imgUrl: string): Promise<void> => {
-  const { AWS_S3_BUCKET_NAME } = <Record<string, string>>process.env;
+  const { AWS_S3_BUCKET_NAME } = process.env as unknown as EnvironmentInterface;
   const objectKey = imgUrl.replace(`https://${AWS_S3_BUCKET_NAME}.s3.amazonaws.com/`, '');
 
   try {

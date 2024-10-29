@@ -16,7 +16,8 @@ import {
   deletePendingOrdersPastDelay,
   outcomeHandler,
   CustomError,
-  PRODUCT_IMG_UPLOAD_PATH
+  PRODUCT_IMG_UPLOAD_PATH,
+  EnvironmentInterface
 } from './api/v1/shared';
 import {
   authRoutes,
@@ -29,7 +30,7 @@ import {
 dotenv.config();
 colors.enable();
 const app = express();
-const { PORT, MODE } = <Record<string, string>>process.env;
+const { PORT, MODE } = process.env as unknown as EnvironmentInterface;
 let server: Server;
 
 app.use(cors());

@@ -7,7 +7,8 @@ To run this project, you will need to add the following environment variables to
 
 ```
 ACCESS_TOKEN_SECRET=<Your secret key>
-DATABASE_URI=<MongoDB connection url>
+DATABASE_URI_TEST=<Test MongoDB connection url>
+DATABASE_URI_LIVE=<Live MongoDB connection url>
 FRONTEND_URL=<Url where frontend is hosted>
 MODE=development
 PORT=<Desired port number>

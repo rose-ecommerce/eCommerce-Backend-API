@@ -7,7 +7,8 @@ import * as jwt from 'jsonwebtoken';
 import { UserModel } from '../../data-models';
 import {
   GetUserAuthInfoRequestInterface,
-  AccessTokenPayloadInterface
+  AccessTokenPayloadInterface,
+  EnvironmentInterface
 } from '../interfaces';
 import {
   CustomError
@@ -21,7 +22,7 @@ import {
  */
 export const isAuthenticated = async (req: GetUserAuthInfoRequestInterface, res: Response, next: NextFunction): Promise<void> => {
   const accessToken = req?.headers?.authorization?.split(' ')[1];
-  const { ACCESS_TOKEN_SECRET } = <Record<string, string>>process.env;
+  const { ACCESS_TOKEN_SECRET } = process.env as unknown as EnvironmentInterface;
   if (accessToken) {
     try {
       const embeddedPayloadFromJwt = <AccessTokenPayloadInterface>jwt.verify(

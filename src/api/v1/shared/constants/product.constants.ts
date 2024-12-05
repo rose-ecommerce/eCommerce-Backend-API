@@ -28,7 +28,9 @@ export const MIN_IMAGES_PER_PRODUCT = 1;
 
 export const PRODUCT_CATEGORY_NAME_FORMAT = /^(?!_)(?!.*__)(?!.*_$)[a-z_]+$/;
 
-export const PRODUCT_CUSTOMIZATION_TEXT_FORMAT = /^[A-Z0-9]+$/;
+export const PRODUCT_CUSTOMIZATION_TEXT_FORMAT_OLD = /^[A-Z0-9]+$/;
+
+export const PRODUCT_CUSTOMIZATION_TEXT_FORMAT = /^[A-Za-z0-9]+(?: & [A-Za-z0-9]+)?$/;
 
 export const DEFAULT_PAGINATION_PAGE = 0;
 

@@ -18,7 +18,7 @@ export const NO_SHIPPING_CHARGE_THRESHOLD = 700;
 /**
  * In INR
  */
-export const SHIPPING_CHARGE = 0;
+export const SHIPPING_CHARGE = 60;
 
 /**
  * INR 1 = 100 paise
